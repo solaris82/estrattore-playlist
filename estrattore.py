@@ -4,14 +4,13 @@ import re
 
 app = Flask(__name__)
 
-# === HTML Template con animazione ===
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estrattore Playlist Online</title>
+    <title>Estrattore Flussi TV Online</title>
     <style>
         body {
             background-color: #0f0f0f;
@@ -97,9 +96,9 @@ HTML_TEMPLATE = """
         <div id="progress-bar"><div id="progress"></div></div>
     </div>
 
-    <h1>🎬 Estrattore Playlist Online</h1>
-    <p>Inserisci il link della diretta e premi <strong>Cerca flusso</strong>:</p>
-    <input type="text" id="url" placeholder="https://www.raiplay.it/dirette/rai1">
+    <h1>🎬 Estrattore Flussi TV Online</h1>
+    <p>Inserisci il link della diretta o della pagina video e premi <strong>Cerca flusso</strong>:</p>
+    <input type="text" id="url" placeholder="https://esempio.com/diretta/tvcanale">
     <button onclick="cerca()">Cerca flusso</button>
 
     <div id="result"></div>
@@ -132,7 +131,13 @@ HTML_TEMPLATE = """
                     if (data.error) {
                         resultDiv.innerHTML = `<p style='color:red;'>❌ Errore: ${data.error}</p>`;
                     } else {
-                        resultDiv.innerHTML = `<p>✅ Flusso trovato:</p><a href='${data.stream}' target='_blank'>${data.stream}</a>`;
+                        let output = "<p>✅ Flussi trovati:</p>";
+                        output += "<ul style='text-align:left; display:inline-block;'>";
+                        data.streams.forEach(s => {
+                            output += `<li><a href='${s}' target='_blank'>${s}</a></li>`;
+                        });
+                        output += "</ul>";
+                        resultDiv.innerHTML = output;
                     }
                 })
                 .catch(err => {
@@ -166,28 +171,38 @@ def estrai_flusso():
             context = browser.new_context()
             page = context.new_page()
 
-            trovato = None
+            flussi_trovati = []
+
+            pattern = re.compile(
+                r"("
+                r"\.m3u8(\?|$)|"
+                r"chunklist\.m3u8|"
+                r"=hls|"
+                r"aka_media_format_type=hls|"
+                r"\.mpd(\?|$)|"
+                r"manifest(_hr)?\.mpd|"
+                r"dash/.+/master\.mpd"
+                r")",
+                re.IGNORECASE
+            )
 
             def handle_request(request):
-                nonlocal trovato
-                if not trovato:
-                    # Regex più completa per intercettare tutti i flussi HLS e DASH
-                    pattern = r"(\\.m3u8(\\?|$))|(\\.mpd(\\?|$))|(=hls)|(manifest=hls)|(chunklist\\.m3u8)"
-                    if re.search(pattern, request.url, re.IGNORECASE):
-                        trovato = request.url
+                if pattern.search(request.url) and request.url not in flussi_trovati:
+                    flussi_trovati.append(request.url)
 
             page.on("request", handle_request)
 
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(6000)
+                page.goto(url, wait_until="domcontentloaded", timeout=35000)
+                page.wait_for_timeout(7000)
             except Exception as e:
                 browser.close()
                 return jsonify({"error": f"Errore di caricamento: {e}"}), 500
 
             browser.close()
-            if trovato:
-                return jsonify({"stream": trovato})
+
+            if flussi_trovati:
+                return jsonify({"streams": flussi_trovati})
             return jsonify({"error": "Nessun flusso trovato"}), 404
 
     except Exception as e:
@@ -195,4 +210,4 @@ def estrai_flusso():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=80
