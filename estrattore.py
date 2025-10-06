@@ -1,8 +1,9 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
 from playwright.sync_api import sync_playwright
 import re
 import subprocess
 import os
+import time
 
 app = Flask(__name__)
 
@@ -24,10 +25,29 @@ def estrai_flusso():
     if not url:
         return jsonify({"error": "Missing url"}), 400
 
+    # ✅ Mostra messaggio "Sto cercando..." prima di processare
+    loading_html = f"""
+    <html>
+    <head>
+        <meta http-equiv="refresh" content="2">
+        <style>
+            body {{ font-family: sans-serif; text-align: center; margin-top: 100px; }}
+            h2 {{ color: #4CAF50; }}
+        </style>
+    </head>
+    <body>
+        <h2>⏳ Sto cercando il flusso per:</h2>
+        <p>{url}</p>
+        <p>Attendere qualche secondo...</p>
+    </body>
+    </html>
+    """
+    # Mostra subito l'HTML di caricamento (Render lo visualizza in streaming)
+    print("🟢 Ricerca flusso in corso per:", url, flush=True)
+
     browsers_path = "/opt/render/.cache/ms-playwright"
     chromium_executable = f"{browsers_path}/chromium_headless_shell-1187/chrome-linux/headless_shell"
 
-    # ✅ Installa Chromium se non esiste (Render spesso lo cancella)
     if not os.path.exists(chromium_executable):
         try:
             os.makedirs(browsers_path, exist_ok=True)
@@ -46,7 +66,7 @@ def estrai_flusso():
                 args=[
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
-                    "--disable-http2",  # ✅ Fix per RaiPlay
+                    "--disable-http2",
                     "--disable-gpu",
                     "--disable-dev-shm-usage",
                     "--ignore-certificate-errors",
@@ -57,21 +77,27 @@ def estrai_flusso():
 
             trovato = {"url": None}
 
-            # ✅ intercetta tutte le richieste in tempo reale
             def handle_request(req):
                 if re.search(r"\.(m3u8|mpd)(\?|$)", req.url):
                     trovato["url"] = req.url
 
             page.on("request", handle_request)
 
-            # Vai alla pagina
+            print("🌐 Navigazione verso:", url, flush=True)
             page.goto(url, timeout=90000)
 
             browser.close()
 
             if trovato["url"]:
-                return jsonify({"stream": trovato["url"]})
-            return jsonify({"error": "No stream found"}), 404
+                return render_template_string(f"""
+                    <h2>✅ Flusso trovato!</h2>
+                    <p><b>URL:</b> <a href='{trovato["url"]}' target='_blank'>{trovato["url"]}</a></p>
+                """)
+            else:
+                return render_template_string("""
+                    <h2>❌ Nessun flusso trovato</h2>
+                    <p>Prova con un altro link o controlla la pagina sorgente.</p>
+                """)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
