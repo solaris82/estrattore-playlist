@@ -6,7 +6,9 @@ services:
       pip install -r requirements.txt
       mkdir -p /opt/render/.cache/ms-playwright
       PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright python -m playwright install chromium
-    startCommand: python estrattore.py
+      echo "✅ Chromium installed successfully!"
+    startCommand: |
+      PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright python estrattore.py
     envVars:
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/.cache/ms-playwright
