@@ -4,14 +4,17 @@ import re
 
 app = Flask(__name__)
 
+# 🔹 Pagina principale (elimina l'errore 404)
 @app.route("/")
 def home():
     return """
     <h2>✅ Estrattore Playlist Online</h2>
     <p>Usa: <code>/api?url=https://...</code></p>
     <p>Esempio: <a href="/api?url=https://www.raiplay.it/dirette/rai1">/api?url=https://www.raiplay.it/dirette/rai1</a></p>
+    <p>Funziona con flussi .m3u8 e .mpd</p>
     """
 
+# 🔹 Endpoint API per estrarre i flussi
 @app.route("/api")
 def estrai_flusso():
     url = request.args.get("url")
@@ -44,4 +47,5 @@ def estrai_flusso():
 
 
 if __name__ == "__main__":
+    # ✅ Render userà automaticamente questa porta
     app.run(host="0.0.0.0", port=10000)
