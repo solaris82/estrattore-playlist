@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, Response
 from playwright.sync_api import sync_playwright
 import re
 
@@ -9,7 +9,8 @@ def home():
     return """
     <h2>✅ Estrattore Playlist Online</h2>
     <p>Usa: <code>/api?url=https://...</code></p>
-    <p>Esempio: <a href="/api?url=https://www.raiplay.it/dirette/rai1">/api?url=https://www.raiplay.it/dirette/rai1</a></p>
+    <p>Esempio: <a href="/api?url=https://www.raiplay.it/dirette/rai1" target="_blank">
+    /api?url=https://www.raiplay.it/dirette/rai1</a></p>
     <p>Funziona con flussi .m3u8 e .mpd</p>
     """
 
@@ -17,32 +18,29 @@ def home():
 def estrai_flusso():
     url = request.args.get("url")
     if not url:
-        return jsonify({"error": "Missing url"}), 400
+        return Response('{"error":"Missing url"}', status=400, mimetype="application/json")
 
     try:
         with sync_playwright() as p:
-            # ✅ Playwright headless senza sandbox (necessario su Render)
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox"]
-            )
+            browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.goto(url, timeout=60000)
 
             trovato = None
             for req in page.context.requests:
-                if re.search(r"\.(m3u8|mpd)(\?|$)", req.url):
+                if re.search(r"\.m3u8(\?|$)", req.url) or re.search(r"\.mpd(\?|$)", req.url):
                     trovato = req.url
                     break
 
             browser.close()
 
             if trovato:
-                return jsonify({"stream_url": trovato}), 200
-            return jsonify({"message": "No stream found"}), 404
+                return Response(f'{{"stream":"{trovato}"}}', mimetype="application/json")
+            else:
+                return Response('{"error":"No stream found"}', status=404, mimetype="application/json")
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return Response(f'{{"error":"{str(e)}"}}', status=500, mimetype="application/json")
 
 
 if __name__ == "__main__":
