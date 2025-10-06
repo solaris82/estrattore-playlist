@@ -152,4 +152,47 @@ def home():
     return render_template_string(HTML_TEMPLATE)
 
 @app.route("/api")
-def estrai_flus_
+def estrai_flusso():
+    url = request.args.get("url")
+    if not url:
+        return jsonify({"error": "Parametro 'url' mancante"}), 400
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-dev-shm-usage", "--no-sandbox"]
+            )
+            context = browser.new_context()
+            page = context.new_page()
+
+            trovato = None
+
+            def handle_request(request):
+                nonlocal trovato
+                if not trovato:
+                    # Regex più completa per intercettare tutti i flussi HLS e DASH
+                    pattern = r"(\\.m3u8(\\?|$))|(\\.mpd(\\?|$))|(=hls)|(manifest=hls)|(chunklist\\.m3u8)"
+                    if re.search(pattern, request.url, re.IGNORECASE):
+                        trovato = request.url
+
+            page.on("request", handle_request)
+
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(6000)
+            except Exception as e:
+                browser.close()
+                return jsonify({"error": f"Errore di caricamento: {e}"}), 500
+
+            browser.close()
+            if trovato:
+                return jsonify({"stream": trovato})
+            return jsonify({"error": "Nessun flusso trovato"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
