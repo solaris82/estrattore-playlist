@@ -4,6 +4,14 @@ import re
 
 app = Flask(__name__)
 
+@app.route("/")
+def home():
+    return """
+    <h2>✅ Estrattore Playlist Online</h2>
+    <p>Usa: <code>/api?url=https://...</code></p>
+    <p>Esempio: <a href="/api?url=https://www.raiplay.it/dirette/rai1">/api?url=https://www.raiplay.it/dirette/rai1</a></p>
+    """
+
 @app.route("/api")
 def estrai_flusso():
     url = request.args.get("url")
@@ -12,7 +20,10 @@ def estrai_flusso():
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox"]
+            )
             page = browser.new_page()
             page.goto(url, timeout=60000)
 
@@ -23,6 +34,7 @@ def estrai_flusso():
                     break
 
             browser.close()
+
             if trovato:
                 return jsonify({"stream_url": trovato}), 200
             return jsonify({"message": "No stream found"}), 404
@@ -31,14 +43,5 @@ def estrai_flusso():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/")
-def home():
-    return """
-    <h2>✅ Estrattore Playlist Online</h2>
-    <p>Usa: <code>/api?url=https://...</code></p>
-    <p>Esempio: <a href="/api?url=https://www.raiplay.it/dirette/rai1">/api?url=https://www.raiplay.it/dirette/rai1</a></p>
-    """
-
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=10000)
