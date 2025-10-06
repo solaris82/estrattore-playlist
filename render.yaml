@@ -7,4 +7,7 @@ services:
       python -m playwright install-deps
       python -m playwright install chromium
     startCommand: python estrattore.py
+    envVars:
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/.cache/ms-playwright
     plan: free
