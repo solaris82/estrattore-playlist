@@ -4,7 +4,6 @@ import re
 
 app = Flask(__name__)
 
-# 🔹 Pagina principale (elimina l'errore 404)
 @app.route("/")
 def home():
     return """
@@ -14,7 +13,6 @@ def home():
     <p>Funziona con flussi .m3u8 e .mpd</p>
     """
 
-# 🔹 Endpoint API per estrarre i flussi
 @app.route("/api")
 def estrai_flusso():
     url = request.args.get("url")
@@ -23,6 +21,7 @@ def estrai_flusso():
 
     try:
         with sync_playwright() as p:
+            # ✅ Playwright headless senza sandbox (necessario su Render)
             browser = p.chromium.launch(
                 headless=True,
                 args=["--no-sandbox", "--disable-setuid-sandbox"]
@@ -47,5 +46,4 @@ def estrai_flusso():
 
 
 if __name__ == "__main__":
-    # ✅ Render userà automaticamente questa porta
     app.run(host="0.0.0.0", port=10000)
