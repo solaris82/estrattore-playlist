@@ -7,13 +7,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return """
-    <h2>✅ Estrattore Playlist Online</h2>
-    <p>Usa: <code>/api?url=https://...</code></p>
-    <p>Esempio: <a href="/api?url=https://www.raiplay.it/dirette/rai1" target="_blank">
-    /api?url=https://www.raiplay.it/dirette/rai1</a></p>
-    <p>Funziona con flussi .m3u8 e .mpd</p>
-    """
+    return "<h2>Estrattore Playlist</h2><p>Usa /api?url=https://...</p>"
 
 @app.route("/api")
 def estrai_flusso():
@@ -25,7 +19,6 @@ def estrai_flusso():
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                executable_path=os.getenv("PLAYWRIGHT_CHROMIUM_PATH", None),
                 args=["--no-sandbox", "--disable-setuid-sandbox"]
             )
             page = browser.new_page()
