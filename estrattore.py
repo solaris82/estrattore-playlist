@@ -120,3 +120,134 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div id="loading-box">
+        <div class="loader"></div>
+        <h3>Sto cercando il flusso...</h3>
+        <p>Attendere qualche secondo ⏳</p>
+        <div id="progress-bar"><div id="progress"></div></div>
+    </div>
+
+    <h1>🎬 Estrattore Flussi TV Online</h1>
+    <p>Inserisci il link della diretta o della pagina video e premi <strong>Cerca flusso</strong>:</p>
+    <input type="text" id="url" placeholder="https://esempio.com/diretta/tvcanale">
+    <button onclick="cerca()">Cerca flusso</button>
+
+    <div id="result"></div>
+
+    <script>
+        function cerca() {
+            const url = document.getElementById('url').value;
+            const resultDiv = document.getElementById('result');
+            const loadingBox = document.getElementById('loading-box');
+            const progress = document.getElementById('progress');
+            resultDiv.innerHTML = "";
+            loadingBox.style.display = "block";
+            progress.style.width = "0%";
+
+            let width = 0;
+            const interval = setInterval(() => {
+                if (width < 95) {
+                    width += 2;
+                    progress.style.width = width + "%";
+                }
+            }, 250);
+
+            fetch(`/api?url=${encodeURIComponent(url)}`)
+                .then(r => r.json())
+                .then(data => {
+                    clearInterval(interval);
+                    progress.style.width = "100%";
+                    setTimeout(() => { loadingBox.style.display = "none"; }, 500);
+
+                    if (data.error) {
+                        resultDiv.innerHTML = `<p style='color:#ff7777;'>❌ Errore: ${data.error}</p>`;
+                    } else {
+                        let output = "<p>✅ Flussi trovati:</p>";
+                        output += "<ul>";
+                        data.streams.forEach(s => {
+                            output += `
+                                <li>
+                                    <a href='${s}' target='_blank'>${s}</a>
+                                    <button class="copy-btn" onclick="copyToClipboard('${s}')">📋 Copia</button>
+                                </li>`;
+                        });
+                        output += "</ul>";
+                        resultDiv.innerHTML = output;
+                    }
+                })
+                .catch(err => {
+                    clearInterval(interval);
+                    progress.style.width = "100%";
+                    setTimeout(() => { loadingBox.style.display = "none"; }, 500);
+                    resultDiv.innerHTML = `<p style='color:#ff7777;'>❌ Errore nella richiesta: ${err}</p>`;
+                });
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert("✅ Flusso copiato negli appunti!");
+            });
+        }
+    </script>
+</body>
+</html>
+"""
+
+@app.route("/")
+def home():
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route("/api")
+def estrai_flusso():
+    url = request.args.get("url")
+    if not url:
+        return jsonify({"error": "Parametro 'url' mancante"}), 400
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-dev-shm-usage", "--no-sandbox"]
+            )
+            context = browser.new_context()
+            page = context.new_page()
+
+            flussi_trovati = []
+
+            pattern = re.compile(
+                r"("
+                r"\.m3u8(\?|$)|"
+                r"chunklist\.m3u8|"
+                r"=hls|"
+                r"aka_media_format_type=hls|"
+                r"\.mpd(\?|$)|"
+                r"manifest(_hr)?\.mpd|"
+                r"dash/.+/master\.mpd"
+                r")",
+                re.IGNORECASE
+            )
+
+            def handle_request(request):
+                if pattern.search(request.url) and request.url not in flussi_trovati:
+                    flussi_trovati.append(request.url)
+
+            page.on("request", handle_request)
+
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=35000)
+                page.wait_for_timeout(7000)
+            except Exception as e:
+                browser.close()
+                return jsonify({"error": f"Errore di caricamento: {e}"}), 500
+
+            browser.close()
+
+            if flussi_trovati:
+                return jsonify({"streams": flussi_trovati})
+            return jsonify({"error": "Nessun flusso trovato"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
