@@ -55,19 +55,22 @@ def estrai_flusso():
             )
             page = browser.new_page()
 
-            # Timeout maggiore per siti lenti come RaiPlay
-            page.goto(url, timeout=90000)
+            trovato = {"url": None}
 
-            trovato = None
-            for req in page.context.requests:
+            # ✅ intercetta tutte le richieste in tempo reale
+            def handle_request(req):
                 if re.search(r"\.(m3u8|mpd)(\?|$)", req.url):
-                    trovato = req.url
-                    break
+                    trovato["url"] = req.url
+
+            page.on("request", handle_request)
+
+            # Vai alla pagina
+            page.goto(url, timeout=90000)
 
             browser.close()
 
-            if trovato:
-                return jsonify({"stream": trovato})
+            if trovato["url"]:
+                return jsonify({"stream": trovato["url"]})
             return jsonify({"error": "No stream found"}), 404
 
     except Exception as e:
