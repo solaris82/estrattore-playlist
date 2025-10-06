@@ -1,228 +1,208 @@
 from flask import Flask, request, render_template_string, jsonify
 from playwright.sync_api import sync_playwright
 import re
-import subprocess
-import os
 
 app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 
-# --- HTML principale con form + modale di caricamento ---
-PAGE_HTML = """
+# === HTML Template con animazione ===
+HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
-<title>Estrattore Playlist Online</title>
-<style>
-  body {
-    font-family: "Segoe UI", sans-serif;
-    background-color: #111;
-    color: #eee;
-    text-align: center;
-    padding-top: 80px;
-  }
-  h2 { color: #4CAF50; }
-  input[type=text] {
-    width: 60%%;
-    padding: 10px;
-    border-radius: 8px;
-    border: none;
-    outline: none;
-    font-size: 16px;
-  }
-  button {
-    padding: 10px 20px;
-    background: #4CAF50;
-    border: none;
-    color: white;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 16px;
-    margin-left: 10px;
-  }
-  button:hover { background: #45a049; }
-  #result {
-    margin-top: 40px;
-    font-size: 18px;
-  }
-  a { color: #4CAF50; }
-
-  /* --- MODALE --- */
-  .modal {
-    display: none;
-    position: fixed;
-    z-index: 10;
-    left: 0; top: 0;
-    width: 100%%; height: 100%%;
-    background-color: rgba(0,0,0,0.7);
-  }
-  .modal-content {
-    position: absolute;
-    top: 50%%; left: 50%%;
-    transform: translate(-50%%, -50%%);
-    background-color: #222;
-    padding: 30px;
-    border-radius: 10px;
-    width: 400px;
-    color: white;
-  }
-  .spinner {
-    border: 6px solid #333;
-    border-top: 6px solid #4CAF50;
-    border-radius: 50%%;
-    width: 50px;
-    height: 50px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 20px;
-  }
-  @keyframes spin {
-    0%% { transform: rotate(0deg); }
-    100%% { transform: rotate(360deg); }
-  }
-  .progress {
-    width: 100%%;
-    height: 10px;
-    background-color: #333;
-    border-radius: 5px;
-    overflow: hidden;
-    margin-top: 15px;
-  }
-  .bar {
-    height: 100%%;
-    width: 0%%;
-    background: linear-gradient(90deg, #00c853, #b2ff59);
-  }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estrattore Playlist Online</title>
+    <style>
+        body {
+            background-color: #0f0f0f;
+            color: #f1f1f1;
+            font-family: 'Segoe UI', sans-serif;
+            text-align: center;
+            margin-top: 10%;
+        }
+        h1 {
+            color: #3ccf57;
+        }
+        input {
+            padding: 10px;
+            width: 50%;
+            border-radius: 6px;
+            border: none;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #3ccf57;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2fa746;
+        }
+        #loading-box {
+            display: none;
+            background-color: #1b1b1b;
+            border-radius: 10px;
+            padding: 30px;
+            width: 300px;
+            margin: 0 auto;
+            margin-bottom: 25px;
+            animation: fadein 0.3s ease-in;
+        }
+        @keyframes fadein {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        /* Animazione cerchio che ruota */
+        .loader {
+            border: 5px solid #333;
+            border-top: 5px solid #3ccf57;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #444;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+        #progress {
+            width: 0%;
+            height: 8px;
+            background-color: #3ccf57;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        #result {
+            margin-top: 25px;
+            font-size: 16px;
+        }
+        a {
+            color: #3ccf57;
+            word-break: break-all;
+        }
+    </style>
 </head>
 <body>
-  <h2>🎬 Estrattore Playlist Online</h2>
-  <p>Inserisci il link della diretta e premi <b>Cerca flusso</b>:</p>
-
-  <input id="url" type="text" placeholder="https://www.raiplay.it/dirette/rai1">
-  <button onclick="startSearch()">Cerca flusso</button>
-
-  <div id="result"></div>
-
-  <!-- Modale di caricamento -->
-  <div id="loadingModal" class="modal">
-    <div class="modal-content">
-      <div class="spinner"></div>
-      <h3>Sto cercando il flusso...</h3>
-      <p>Attendere qualche secondo.</p>
-      <div class="progress"><div class="bar" id="bar"></div></div>
+    <div id="loading-box">
+        <div class="loader"></div>
+        <h3>Sto cercando il flusso...</h3>
+        <p>Attendere qualche secondo ⏳</p>
+        <div id="progress-bar"><div id="progress"></div></div>
     </div>
-  </div>
 
-<script>
-function startSearch() {
-  const url = document.getElementById("url").value.trim();
-  const result = document.getElementById("result");
-  const modal = document.getElementById("loadingModal");
-  const bar = document.getElementById("bar");
+    <h1>🎬 Estrattore Playlist Online</h1>
+    <p>Inserisci il link della diretta e premi <strong>Cerca flusso</strong>:</p>
+    <input type="text" id="url" placeholder="https://www.raiplay.it/dirette/rai1">
+    <button onclick="cerca()">Cerca flusso</button>
 
-  if (!url) {
-    result.innerHTML = "<p style='color:red;'>⚠️ Inserisci un URL valido.</p>";
-    return;
-  }
+    <div id="result"></div>
 
-  result.innerHTML = "";
-  modal.style.display = "block";
-  bar.style.width = "0%%";
+    <script>
+        function cerca() {
+            const url = document.getElementById('url').value;
+            const resultDiv = document.getElementById('result');
+            const loadingBox = document.getElementById('loading-box');
+            const progress = document.getElementById('progress');
+            resultDiv.innerHTML = "";
+            loadingBox.style.display = "block";
+            progress.style.width = "0%";
 
-  let width = 0;
-  const interval = setInterval(() => {
-    if (width >= 100) clearInterval(interval);
-    else { width += 1; bar.style.width = width + "%%"; }
-  }, 60);
+            // Barra di caricamento fittizia
+            let width = 0;
+            const interval = setInterval(() => {
+                if (width < 95) {
+                    width += 2;
+                    progress.style.width = width + "%";
+                }
+            }, 250);
 
-  fetch(`/api?url=${encodeURIComponent(url)}`)
-    .then(r => r.json())
-    .then(data => {
-      clearInterval(interval);
-      bar.style.width = "100%%";
-      setTimeout(() => { modal.style.display = "none"; }, 600);
+            fetch(`/api?url=${encodeURIComponent(url)}`)
+                .then(r => r.json())
+                .then(data => {
+                    clearInterval(interval);
+                    progress.style.width = "100%";
+                    setTimeout(() => { loadingBox.style.display = "none"; }, 500);
 
-      if (data.stream) {
-        result.innerHTML = `
-          <h3>✅ Flusso trovato!</h3>
-          <p><a href="${data.stream}" target="_blank">${data.stream}</a></p>
-        `;
-      } else {
-        result.innerHTML = "<h3>❌ Nessun flusso trovato.</h3>";
-      }
-    })
-    .catch(err => {
-      clearInterval(interval);
-      modal.style.display = "none";
-      result.innerHTML = "<p style='color:red;'>Errore durante la ricerca.</p>";
-      console.error(err);
-    });
-}
-</script>
+                    if (data.error) {
+                        resultDiv.innerHTML = `<p style='color:red;'>❌ Errore: ${data.error}</p>`;
+                    } else {
+                        resultDiv.innerHTML = `<p>✅ Flusso trovato:</p><a href='${data.stream}' target='_blank'>${data.stream}</a>`;
+                    }
+                })
+                .catch(err => {
+                    clearInterval(interval);
+                    progress.style.width = "100%";
+                    setTimeout(() => { loadingBox.style.display = "none"; }, 500);
+                    resultDiv.innerHTML = `<p style='color:red;'>❌ Errore nella richiesta: ${err}</p>`;
+                });
+        }
+    </script>
 </body>
 </html>
 """
 
-# --- ROUTES BACKEND ---
 @app.route("/")
 def home():
-    return render_template_string(PAGE_HTML)
+    return render_template_string(HTML_TEMPLATE)
 
 @app.route("/api")
 def estrai_flusso():
     url = request.args.get("url")
     if not url:
-        return jsonify({"error": "Missing url"}), 400
-
-    browsers_path = "/opt/render/.cache/ms-playwright"
-    chromium_executable = f"{browsers_path}/chromium_headless_shell-1187/chrome-linux/headless_shell"
-
-    # Installa Chromium se manca
-    if not os.path.exists(chromium_executable):
-        try:
-            os.makedirs(browsers_path, exist_ok=True)
-            subprocess.run(
-                ["python", "-m", "playwright", "install", "chromium"],
-                env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": browsers_path},
-                check=True,
-            )
-        except Exception as e:
-            return jsonify({"error": f"Failed to install Chromium: {e}"}), 500
+        return jsonify({"error": "Parametro 'url' mancante"}), 400
 
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-http2",
-                    "--disable-gpu",
-                    "--disable-dev-shm-usage",
-                    "--ignore-certificate-errors",
-                    "--disable-features=IsolateOrigins,site-per-process",
-                ]
+                args=["--disable-dev-shm-usage", "--no-sandbox"]
             )
-            page = browser.new_page()
+            context = browser.new_context()
+            page = context.new_page()
 
-            trovato = {"url": None}
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=25000)
+                page.wait_for_timeout(1500)
+            except Exception as e:
+                browser.close()
+                return jsonify({"error": f"Errore di caricamento: {e}"}), 500
 
-            def handle_request(req):
-                if re.search(r"\.(m3u8|mpd)(\?|$)", req.url):
-                    trovato["url"] = req.url
+            trovato = None
+
+            # Intercetta le richieste di rete
+            def handle_request(request):
+                nonlocal trovato
+                if not trovato:
+                    if re.search(r"\\.m3u8(\\?|$)", request.url) or re.search(r"\\.mpd(\\?|$)", request.url):
+                        trovato = request.url
 
             page.on("request", handle_request)
-            page.goto(url, timeout=90000)
+
+            # Attende un po’ per catturare le richieste
+            page.wait_for_timeout(4000)
+
             browser.close()
 
-            if trovato["url"]:
-                return jsonify({"stream": trovato["url"]})
-            else:
-                return jsonify({"error": "No stream found"})
+            if trovato:
+                return jsonify({"stream": trovato})
+            return jsonify({"error": "Nessun flusso trovato"}), 404
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=8080)
