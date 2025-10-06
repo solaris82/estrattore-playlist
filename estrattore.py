@@ -3,8 +3,6 @@ from playwright.sync_api import sync_playwright
 import re
 
 app = Flask(__name__)
-app.config['JSON_AS_ASCII'] = False
-app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 # === HTML Template con animazione ===
 HTML_TEMPLATE = """
@@ -22,9 +20,7 @@ HTML_TEMPLATE = """
             text-align: center;
             margin-top: 10%;
         }
-        h1 {
-            color: #3ccf57;
-        }
+        h1 { color: #3ccf57; }
         input {
             padding: 10px;
             width: 50%;
@@ -40,24 +36,22 @@ HTML_TEMPLATE = """
             border-radius: 6px;
             cursor: pointer;
         }
-        button:hover {
-            background-color: #2fa746;
-        }
+        button:hover { background-color: #2fa746; }
+
         #loading-box {
             display: none;
             background-color: #1b1b1b;
             border-radius: 10px;
             padding: 30px;
-            width: 300px;
+            width: 320px;
             margin: 0 auto;
             margin-bottom: 25px;
             animation: fadein 0.3s ease-in;
         }
         @keyframes fadein {
-            from { opacity: 0; transform: scale(0.95); }
+            from { opacity: 0; transform: scale(0.9); }
             to { opacity: 1; transform: scale(1); }
         }
-        /* Animazione cerchio che ruota */
         .loader {
             border: 5px solid #333;
             border-top: 5px solid #3ccf57;
@@ -120,7 +114,6 @@ HTML_TEMPLATE = """
             loadingBox.style.display = "block";
             progress.style.width = "0%";
 
-            // Barra di caricamento fittizia
             let width = 0;
             const interval = setInterval(() => {
                 if (width < 95) {
@@ -159,50 +152,4 @@ def home():
     return render_template_string(HTML_TEMPLATE)
 
 @app.route("/api")
-def estrai_flusso():
-    url = request.args.get("url")
-    if not url:
-        return jsonify({"error": "Parametro 'url' mancante"}), 400
-
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--disable-dev-shm-usage", "--no-sandbox"]
-            )
-            context = browser.new_context()
-            page = context.new_page()
-
-            try:
-                page.goto(url, wait_until="domcontentloaded", timeout=25000)
-                page.wait_for_timeout(1500)
-            except Exception as e:
-                browser.close()
-                return jsonify({"error": f"Errore di caricamento: {e}"}), 500
-
-            trovato = None
-
-            # Intercetta le richieste di rete
-            def handle_request(request):
-                nonlocal trovato
-                if not trovato:
-                    if re.search(r"\\.m3u8(\\?|$)", request.url) or re.search(r"\\.mpd(\\?|$)", request.url):
-                        trovato = request.url
-
-            page.on("request", handle_request)
-
-            # Attende un po’ per catturare le richieste
-            page.wait_for_timeout(4000)
-
-            browser.close()
-
-            if trovato:
-                return jsonify({"stream": trovato})
-            return jsonify({"error": "Nessun flusso trovato"}), 404
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+def estrai_flus_
