@@ -8,7 +8,15 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "<h2>Estrattore Playlist</h2><p>Usa /api?url=https://...</p>"
+    return """
+    <h2>✅ Estrattore Playlist Online</h2>
+    <p>Usa: <code>/api?url=https://...</code></p>
+    <p>Esempio: 
+        <a href='/api?url=https://www.raiplay.it/dirette/rai1'>
+        /api?url=https://www.raiplay.it/dirette/rai1</a>
+    </p>
+    <p>Funziona con flussi .m3u8 e .mpd</p>
+    """
 
 @app.route("/api")
 def estrai_flusso():
@@ -19,7 +27,7 @@ def estrai_flusso():
     browsers_path = "/opt/render/.cache/ms-playwright"
     chromium_executable = f"{browsers_path}/chromium_headless_shell-1187/chrome-linux/headless_shell"
 
-    # ✅ Se Chromium non esiste, installalo automaticamente
+    # ✅ Installa Chromium se non esiste (Render spesso lo cancella)
     if not os.path.exists(chromium_executable):
         try:
             os.makedirs(browsers_path, exist_ok=True)
@@ -35,10 +43,20 @@ def estrai_flusso():
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox"]
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-http2",  # ✅ Fix per RaiPlay
+                    "--disable-gpu",
+                    "--disable-dev-shm-usage",
+                    "--ignore-certificate-errors",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                ]
             )
             page = browser.new_page()
-            page.goto(url, timeout=60000)
+
+            # Timeout maggiore per siti lenti come RaiPlay
+            page.goto(url, timeout=90000)
 
             trovato = None
             for req in page.context.requests:
