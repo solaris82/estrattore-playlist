@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from playwright.sync_api import sync_playwright
 import re
+import subprocess
 import os
 
 app = Flask(__name__)
@@ -14,6 +15,21 @@ def estrai_flusso():
     url = request.args.get("url")
     if not url:
         return jsonify({"error": "Missing url"}), 400
+
+    browsers_path = "/opt/render/.cache/ms-playwright"
+    chromium_executable = f"{browsers_path}/chromium_headless_shell-1187/chrome-linux/headless_shell"
+
+    # ✅ Se Chromium non esiste, installalo automaticamente
+    if not os.path.exists(chromium_executable):
+        try:
+            os.makedirs(browsers_path, exist_ok=True)
+            subprocess.run(
+                ["python", "-m", "playwright", "install", "chromium"],
+                env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": browsers_path},
+                check=True,
+            )
+        except Exception as e:
+            return jsonify({"error": f"Failed to install Chromium: {e}"}), 500
 
     try:
         with sync_playwright() as p:
@@ -41,4 +57,5 @@ def estrai_flusso():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
