@@ -1,7 +1,6 @@
-from flask import Flask, request, Response
+from flask import Flask, request, jsonify
 from playwright.sync_api import sync_playwright
 import re
-import os
 
 app = Flask(__name__)
 
@@ -9,33 +8,37 @@ app = Flask(__name__)
 def estrai_flusso():
     url = request.args.get("url")
     if not url:
-        return Response("Missing url parameter (?url=...)", status=400)
+        return jsonify({"error": "Missing url"}), 400
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-
-        try:
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+            page = browser.new_page()
             page.goto(url, timeout=60000)
-        except Exception as e:
+
+            trovato = None
+            for req in page.context.requests:
+                if re.search(r"\.(m3u8|mpd)(\?|$)", req.url):
+                    trovato = req.url
+                    break
+
             browser.close()
-            return Response(f"Cannot open {url}: {e}", status=500)
+            if trovato:
+                return jsonify({"stream_url": trovato}), 200
+            return jsonify({"message": "No stream found"}), 404
 
-        trovato = None
-        # Analizza le richieste per trovare stream .m3u8 o .mpd
-        for req in page.context.requests:
-            if re.search(r"\.m3u8(\?|$)", req.url) or re.search(r"\.mpd(\?|$)", req.url):
-                trovato = req.url
-                break
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        browser.close()
 
-        if trovato:
-            return Response(trovato, status=200, mimetype="text/plain")
-        else:
-            return Response("No stream found", status=404)
+@app.route("/")
+def home():
+    return """
+    <h2>✅ Estrattore Playlist Online</h2>
+    <p>Usa: <code>/api?url=https://...</code></p>
+    <p>Esempio: <a href="/api?url=https://www.raiplay.it/dirette/rai1">/api?url=https://www.raiplay.it/dirette/rai1</a></p>
+    """
 
-# Avvio server: Render assegna una porta automatica
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=8080)
