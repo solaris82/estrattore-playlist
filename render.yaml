@@ -2,8 +2,6 @@ services:
   - type: web
     name: estrattore-playlist
     env: python
-    buildCommand: |
-      pip install -r requirements.txt
-      python -m playwright install chromium
+    buildCommand: pip install -r requirements.txt && python -m playwright install-deps && python -m playwright install chromium
     startCommand: python estrattore.py
     plan: free
